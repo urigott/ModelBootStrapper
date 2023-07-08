@@ -11,8 +11,6 @@ from bokeh.embed import file_html
 def plot_predict(self, X, y_true=None, threshold=None, samples=50):
     threshold = threshold if threshold else self.threshold
 
-    self.verify_model_inputs(X, y_true, threshold)
-
     samples_idx = self._choose_samples_for_plot(X, samples)
 
     X = X.loc[samples_idx]

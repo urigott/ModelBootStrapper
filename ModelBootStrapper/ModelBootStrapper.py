@@ -9,7 +9,13 @@ from joblib import Parallel, delayed
 
 
 class ModelBootStrapper(BaseEstimator, ClassifierMixin):
-    from .utils.utils import _count_cpus, verify_object_inputs, verify_model_inputs
+    from .utils.utils import (
+        _count_cpus,
+        verify_object_inputs,
+        verify_fit_inputs,
+        verify_predict_inputs,
+        verify_metrics_input,
+    )
     from .plotting.plotting import (
         plot_predict,
         _get_plot_config,
@@ -27,13 +33,15 @@ class ModelBootStrapper(BaseEstimator, ClassifierMixin):
         threshold=0.5,
     ):
         """
-        A class to calibrate binary classifiers and calculate confidence intervals for the predictions.
+        A class to calculate confidence intervals for model's predictions based on bootstrapping.
 
-        estimator:    an estimator with .fit and .predict methods, such as sk-learn classifiers.
-        n_boot (int): Number of bootstrap resamples used to estimate the confidence intervals. default: 100
-        agg_func: aggregation function. Default: median
-        ci: Size of the confidence interval that will be calculated.
-            float between 0 and 1, exclusive. deafult: 0.95
+        Parameters:
+            estimator (object): an estimator with .fit and .predict methods, such as scikit-learn classifiers.
+            n_boot (int): Number of bootstrap resamples used to estimate the confidence intervals. Default: 100
+            n_folds (int): Number of folds for cross-validation. Default: 5
+            agg_func (callable): Aggregation function used for combining predictions from different bootstrap models. Default: np.median
+            ci (float): Size of the confidence interval that will be calculated. Float between 0 and 1, exclusive. Default: 0.95
+            threshold (float): Decision threshold for binary classification. Default: 0.5
         """
         self.verify_object_inputs(estimator, ci, n_boot, agg_func, n_folds)
 
@@ -59,12 +67,24 @@ class ModelBootStrapper(BaseEstimator, ClassifierMixin):
 
     def fit(self, X, y, n_samples=None):
         """
-        A method to fit a calibrated estimator and n_boot bootstrapped estimators.
+        Fits the model to the given input data.
 
-        X: Pandas dataframe of shape (samples, features).
-        y: pd.Series of shape (samples,). Binary classifications.
+        Parameters:
+            X (pandas.DataFrame): The input data of shape (samples, features).
+            y (pandas.Series): The target values of shape (samples,).
+            n_samples (int, optional): The number of samples to use for training each model. If not provided,
+                a default value of min(samples, 100000) will be used.
+
+        Returns:
+            None
+
+        Notes:
+            - This method fits the model to the provided input data and target values.
+            - It uses the `_fit` method internally to train each model in parallel.
+            - The number of models to train is determined by the `n_boot` attribute of the class.
+            - The `n_jobs` parameter of the `Parallel` class is set to the number of available CPUs.
         """
-        self.verify_model_inputs(X, y)
+        self.verify_fit_inputs(X, y, n_samples)
 
         if not n_samples:
             n_samples = min([X.shape[0], 100000]) if not n_samples else n_samples
@@ -73,17 +93,21 @@ class ModelBootStrapper(BaseEstimator, ClassifierMixin):
             for j in trange(self.n_boot, leave=True, desc="Training models")
         )
 
-    def predict(self, X):
+    def predict(self, X, sort_estimations=False):
         """
-        A method to predict a fitted bootstrap model.
+        Predicts using the fitted bootstrap model.
 
-        X:  Numpy array or Pandas dataframe of shape (samples, features).
+        Parameters:
+            X (pandas.DataFrame): Input data of shape (samples, features).
+            sort_estimations: Whether to sort returned dataframe based on point estimation. Default: False
+
+        Returns:
+            pandas.DataFrame: DataFrame containing predicted probabilities and confidence intervals.
+
+        Raises:
+            AssertionError: If the model has not been fitted before calling this method.
         """
-        # verify the class if fitted:
-        self.verify_model_inputs(X)
-
-        if not self.b_estimators:
-            raise AssertionError("Must fit estimators before using predict")
+        self.verify_predict_inputs(X, sort_estimations)
 
         preds = np.vstack([est.predict_proba(X)[:, 1] for est in self.b_estimators]).T
         preds = np.vstack(
@@ -94,6 +118,10 @@ class ModelBootStrapper(BaseEstimator, ClassifierMixin):
             ]
         ).T
 
-        return pd.DataFrame(
-            preds, columns=["point_est", "lower_bound", "upper_bound"], index=X.index
-        ).sort_values(by="point_est")
+        preds = pd.DataFrame(
+            preds,
+            columns=["point_est", "lower_bound", "upper_bound"],
+            index=X.index,
+        )
+
+        return preds.sort_values(by="point_est") if sort_estimations else preds
