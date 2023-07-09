@@ -110,7 +110,7 @@ def _get_plot_config(source, y_provided=False, index_name="index"):
 @staticmethod
 def _choose_samples_for_plot(X, samples):
     if isinstance(samples, int):
-        if samples <= len(X):
+        if samples > len(X):
             raise ValueError(
                 "samples must be less or equal to the total number of samples"
             )
