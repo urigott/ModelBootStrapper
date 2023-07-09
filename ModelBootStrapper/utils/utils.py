@@ -166,8 +166,5 @@ def verify_metrics_input(self, X, y, threshold=None):
 
     if X.shape[0] != y.shape[0]:
         raise AssertionError("X and y must have the same number of samples")
-
-    if set(y.unique()) != {0, 1} or set(y.unique()) != {0} or set(y.unique()) != {1}:
-        raise ValueError("y_true must include only [0, 1]")
-
+    
     return True
